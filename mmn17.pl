@@ -7,7 +7,7 @@
   Description - Implementation of AI that is capable of playing
                  a custom game using Alpha-Beta algorithm.
                  
-                In the game the player needs to choose between
+                In the game, the player needs to choose between
                  moving or placing barriers that limit the
                  movement of the opponent. The goal is to reach
                  to the opposite side from the start.
@@ -19,7 +19,7 @@
   Input       - Specified during run.
   
   Output      - In essence, Board overview for each turn and
-                 Announciation of the winner.
+                 announcement of the winner.
 
   Synopsys    - start_game.  % For default
                 start_game(Player). % For specifying whether the
