@@ -186,7 +186,7 @@ play_opponent_turn(pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlace
     
     % Case 3: Move is not legal, try again
     validate_input(Move),  % (we cannot use cut as it will break out of loop)
-    write('Illegal move'), nl,
+    write('(Illegal move)'), nl,
     fail).
 
 
@@ -218,7 +218,9 @@ interpret_validate_and_perform_move_of_opponent(Move, pos(state(P1Pos, P2Pos, P1
     % Interpret
     interpret_direction(Move, Direction),
     % Validate move, fail if illegal move
-    valid_advance(P1Pos, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1), Direction, NewP1Pos).
+    (valid_advance(P1Pos, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1), Direction, NewP1Pos), !
+    ;
+    write('You cannot move '), write(Direction), nl, fail).
 
 % Case 2: Barrier placement move
 interpret_validate_and_perform_move_of_opponent(Move, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1), pos(state(P1Pos, P2Pos, NewP1Barriers, P2Barriers, [Barrier| BarriersPlacement]), 2)) :-
@@ -232,8 +234,10 @@ interpret_validate_and_perform_move_of_opponent(Move, pos(state(P1Pos, P2Pos, P1
     interpret_barrier(Move, Barrier),
     
     % Validate move, fail if illegal
-    valid_barrier(Barrier, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1)),
-    NewP1Barriers is P1Barriers - 1.
+    (valid_barrier(Barrier, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1)), !,
+    NewP1Barriers is P1Barriers - 1
+    ;
+    print_errmsg_barrier_validation(Barrier, pos(state(P1Pos, P2Pos, P1Barriers, P2Barriers, BarriersPlacement), 1)), fail).
 
 
 % validate_input(MoveRepr)
@@ -489,6 +493,21 @@ valid_advance(Row/Col, pos(state(P1Pos, P2Pos, _, _, BarriersPlacement), _), Dir
 
     % Position is not seperated from current one by barrier
     not_blocked(Row/Col, NewRow/NewCol, BarriersPlacement).
+
+
+% valid_advance_regardless_to_player_blockage(StartPos, Direction, NewPos)
+% Succeeds only if the movement is valid, but unlike valid_advance do not
+% consider advancing to a position occupied by a player to be illegal.
+% Used in route finding only
+valid_advance_regardless_to_player_blockage(Row/Col, pos(state(_, _, _, _, BarriersPlacement), _), Direction, NewRow/NewCol) :-
+    % Calculate new position
+    advance(Row/Col, Direction, NewRow/NewCol),
+
+    % Position is within board dimensions
+    within_board(NewRow/NewCol),
+
+    % Position is not seperated from current one by barrier
+    not_blocked(Row/Col, NewRow/NewCol, BarriersPlacement).
     
     
 % movement_options(PlayerPosition, GameState, Positions)
@@ -498,6 +517,17 @@ movement_options(Pos, GameState, Positions) :-
     findall(NewPos,
             (   member(Direction, Directions),
                 valid_advance(Pos, GameState, Direction, NewPos)),
+            Positions).
+
+
+% movement_options_regardless_to_player_blockage(PlayerPosition, GameState, Positions)
+% Finds all possible advancements from a given position, but include positions
+% occupied by players. Used in route finding only
+movement_options_regardless_to_player_blockage(Pos, GameState, Positions) :-
+    Directions = [east, north, south, west],
+    findall(NewPos,
+            (   member(Direction, Directions),
+                valid_advance_regardless_to_player_blockage(Pos, GameState, Direction, NewPos)),
             Positions).
 
 
@@ -575,6 +605,25 @@ valid_barrier(Barrier, pos(state(P1Pos, P2Pos, _, _, BarriersPlacement), _)) :-
     check_route_to_column(P2Pos, pos(state(P1Pos, P2Pos, _, _, [Barrier| BarriersPlacement]), _), P2GoalCol).
 
 
+% print_errmsg_barrier_validation(Barrier, GameState)
+% Intended to be run after valid_barrier failed when checking barrier placement
+% input from the user, and print an indicative message as to why it is not valid
+print_errmsg_barrier_validation(Barrier, pos(state(P1Pos, P2Pos, _, _, BarriersPlacement), _)) :-
+    \+ barrier_within_board(Barrier),
+    write('Barrier is not within board'), nl
+    ;
+    \+ not_collides(Barrier, BarriersPlacement),
+    write('Barrier collides with existing barrier on the board'), nl
+    ;
+    player_definition(1, _, P1GoalCol, _),
+    \+ check_route_to_column(P1Pos, pos(state(P1Pos, P2Pos, _, _, [Barrier| BarriersPlacement]), _), P1GoalCol),
+    write('Barrier blocks Player 1 from reaching to goal'), nl
+    ;
+    player_definition(2, _, P2GoalCol, _),
+    \+ check_route_to_column(P2Pos, pos(state(P1Pos, P2Pos, _, _, [Barrier| BarriersPlacement]), _), P2GoalCol),
+    write('Barrier blocks Player 2 from reaching to goal'), nl.
+    
+    
 % barrier_within_board(Barrier)
 % Checks that barrier is within board
 barrier_within_board([]).
@@ -683,7 +732,7 @@ route_to_column(Pos, GameState, GoalCol, [Pos| Route], RouteLen, Accumulated, Ma
     \+ member(Pos, Accumulated),
 
     % Pass on every neighboring position from current
-    bagof(Pos, (movement_options(Pos, GameState, Positions), member(NewPos, Positions)), _),
+    bagof(Pos, (movement_options_regardless_to_player_blockage(Pos, GameState, Positions), member(NewPos, Positions)), _),
     route_to_column(NewPos, GameState, GoalCol, Route, SubRouteLen, [Pos| Accumulated], NewMaxDepth),
 
     RouteLen is SubRouteLen + 1.
